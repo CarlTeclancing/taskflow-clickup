@@ -1,0 +1,6 @@
+import {db,publicUser} from '../models/db.js';import bcrypt from 'bcryptjs';import jwt from 'jsonwebtoken';import {z} from 'zod';import {fail} from '../middleware/auth.js';
+const credentials=z.object({email:z.string().email().transform(x=>x.toLowerCase()),password:z.string().min(8).max(72)});
+function session(user){return {user,token:jwt.sign({sub:user.id},process.env.JWT_SECRET,{expiresIn:'8h'})}}
+export async function register(req,res){const {name,email,password}=credentials.extend({name:z.string().trim().min(2).max(80)}).parse(req.body);const user=await db.user.create({data:{name,email,password:await bcrypt.hash(password,12),memberships:{create:{role:'OWNER',workspace:{create:{name:`${name}'s workspace`,projects:{create:{name:'My first project'}}}}}}},select:publicUser});res.status(201).json(session(user))}
+export async function login(req,res){const {email,password}=credentials.parse(req.body);const u=await db.user.findUnique({where:{email}});if(!u||!await bcrypt.compare(password,u.password))fail(401,'Invalid credentials');res.json(session({id:u.id,name:u.name,email:u.email}))}
+export async function profile(req,res){const {name}=z.object({name:z.string().trim().min(2).max(80)}).parse(req.body);res.json(await db.user.update({where:{id:req.userId},data:{name},select:publicUser}))}
